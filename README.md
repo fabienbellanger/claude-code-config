@@ -1,5 +1,20 @@
 # Claude Code custom configuration
 
+## Status line
+
+1. Add the `statusline.sh` in `~/.claude` directory.
+2. Edit `~/.claude/settings.json`:
+
+   ```json
+   {
+       ...
+       "statusLine": {
+           "type": "command",
+           "command": "~/.claude/statusline.sh"
+       }
+   }
+   ```
+
 ## Commands
 
 ### ecpt
