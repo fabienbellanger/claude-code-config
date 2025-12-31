@@ -2,6 +2,12 @@
 
 ## Status line
 
+### Requirements
+
+- `ccusage`: A powerful CLI tool for analyzing Claude Code usage from local JSONL files ([Website](https://ccusage.com/guide/installation))
+
+### Installation
+
 1. Add the `statusline.sh` in `~/.claude` directory.
 2. Edit `~/.claude/settings.json`:
 
