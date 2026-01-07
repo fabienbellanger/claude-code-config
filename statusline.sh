@@ -16,7 +16,6 @@ input=$(cat)
 # Extract current session ID and model info from Claude Code input
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 model_name=$(echo "$input" | jq -r '.model.display_name // empty')
-user=$(whoami)
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 
@@ -26,7 +25,7 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
     if [ -z "$branch" ]; then
         branch="detached"
     fi
-    
+
     # Check for pending changes (staged or unstaged)
     if ! git diff-index --quiet HEAD -- 2>/dev/null || ! git diff-index --quiet --cached HEAD -- 2>/dev/null; then
         branch="$branch*"
@@ -40,11 +39,6 @@ dir_name=$(basename "$current_dir")
 
 # Get today's date in YYYYMMDD format
 today=$(date +%Y%m%d)
-
-# Function to format numbers
-format_cost() {
-    printf "%.2f" "$1"
-}
 
 # Format tokens
 format_tokens() {
@@ -73,7 +67,6 @@ format_time() {
 # Initialize variables with defaults
 session_cost="0.00"
 session_tokens=0
-daily_cost="0.00"
 block_cost="0.00"
 remaining_time="N/A"
 
@@ -81,13 +74,13 @@ remaining_time="N/A"
 if command -v ccusage >/dev/null 2>&1 && [ -n "$session_id" ] && [ "$session_id" != "empty" ]; then
     # Look for the session JSONL file in Claude project directories
     session_jsonl_file=""
-    
+
     # Check common Claude paths
     claude_paths=(
         "$HOME/.config/claude"
         "$HOME/.claude"
     )
-    
+
     for claude_path in "${claude_paths[@]}"; do
         if [ -d "$claude_path/projects" ]; then
             # Use find to search for the session file
@@ -97,14 +90,14 @@ if command -v ccusage >/dev/null 2>&1 && [ -n "$session_id" ] && [ "$session_id"
             fi
         fi
     done
-    
+
     # Parse the session file if found
     if [ -n "$session_jsonl_file" ] && [ -f "$session_jsonl_file" ]; then
         # Count lines and estimate cost (simple approximation)
         # Each line is a usage entry, we can count tokens and estimate
         session_tokens=0
         session_entries=0
-        
+
         while IFS= read -r line; do
             if [ -n "$line" ]; then
                 session_entries=$((session_entries + 1))
@@ -112,16 +105,16 @@ if command -v ccusage >/dev/null 2>&1 && [ -n "$session_id" ] && [ "$session_id"
                 # Cache tokens shouldn't be added up as they're reused/shared across messages
                 input_tokens=$(echo "$line" | jq -r '.message.usage.input_tokens // 0' 2>/dev/null || echo "0")
                 output_tokens=$(echo "$line" | jq -r '.message.usage.output_tokens // 0' 2>/dev/null || echo "0")
-                
+
                 line_tokens=$((input_tokens + output_tokens))
                 session_tokens=$((session_tokens + line_tokens))
             fi
         done < "$session_jsonl_file"
-        
+
         # Use ccusage statusline to get the accurate cost for this session
         ccusage_statusline=$(echo "$input" | ccusage statusline 2>/dev/null)
         current_session_cost=$(echo "$ccusage_statusline" | sed -n 's/.*💰 \([^[:space:]]*\) session.*/\1/p')
-        
+
         if [ -n "$current_session_cost" ] && [ "$current_session_cost" != "N/A" ]; then
             session_cost=$(echo "$current_session_cost" | sed 's/\$//g')
         fi
@@ -130,12 +123,6 @@ fi
 
 # Get daily and block data
 if command -v ccusage >/dev/null 2>&1; then
-    # Get daily data
-    daily_data=$(ccusage daily --json --since "$today" 2>/dev/null)
-    if [ $? -eq 0 ] && [ -n "$daily_data" ]; then
-        daily_cost=$(echo "$daily_data" | jq -r '.totals.totalCost // 0')
-    fi
-    
     # Get active block data
     block_data=$(ccusage blocks --active --json 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$block_data" ]; then
@@ -151,11 +138,10 @@ fi
 
 # Format the output
 formatted_session_cost=$(format_cost "$session_cost")
-formatted_daily_cost=$(format_cost "$daily_cost")
 formatted_tokens=$(format_tokens "$session_tokens")
 
 # Build the status line with colors (light gray as default)
-status_line="${GREEN}$user${GRAY} in ${BLUE}$dir_name${GRAY} on ${RED}$branch${GRAY} | ${LIGHT_GRAY}🤖 ${YELLOW}$model_name${GRAY} / ${LIGHT_GRAY}📅 \$$formatted_daily_cost${GRAY} /${LIGHT_GRAY}"
+status_line="${BLUE}$dir_name${GRAY} (${YELLOW}$branch${GRAY}) | ${LIGHT_GRAY}🤖 ${GREEN}$model_name${GRAY} / ${LIGHT_GRAY}"
 
 if [ "$remaining_time" != "N/A" ]; then
     status_line="$status_line 🕓 $remaining_time"
