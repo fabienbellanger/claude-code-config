@@ -19,6 +19,20 @@ model_name=$(echo "$input" | jq -r '.model.display_name // empty')
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 
+# Extract context window information
+context_window_size=$(echo "$input" | jq -r '.context_window.context_window_size // 0')
+current_usage=$(echo "$input" | jq '.context_window.current_usage // null')
+
+# Calculate current tokens used from context_window
+if [ "$current_usage" != "null" ]; then
+    input_tokens=$(echo "$current_usage" | jq -r '.input_tokens // 0')
+    cache_creation_tokens=$(echo "$current_usage" | jq -r '.cache_creation_input_tokens // 0')
+    cache_read_tokens=$(echo "$current_usage" | jq -r '.cache_read_input_tokens // 0')
+    tokens_used=$((input_tokens + cache_creation_tokens + cache_read_tokens))
+else
+    tokens_used=0
+fi
+
 # Get current git branch with error handling
 if git rev-parse --git-dir >/dev/null 2>&1; then
     branch=$(git branch --show-current 2>/dev/null || echo "detached")
@@ -44,9 +58,9 @@ today=$(date +%Y%m%d)
 format_tokens() {
     local tokens=$1
     if [ "$tokens" -ge 1000000 ]; then
-        printf "%.1fM" "$(echo "scale=1; $tokens / 1000000" | bc -l)"
+        printf "%.0fM" "$(echo "scale=1; $tokens / 1000000" | bc -l)"
     elif [ "$tokens" -ge 1000 ]; then
-        printf "%.1fK" "$(echo "scale=1; $tokens / 1000" | bc -l)"
+        printf "%.0fK" "$(echo "scale=1; $tokens / 1000" | bc -l)"
     else
         printf "%d" "$tokens"
     fi
@@ -136,17 +150,30 @@ if command -v ccusage >/dev/null 2>&1; then
     fi
 fi
 
+# Calculate token percentage if context window size is available
+token_percentage=""
+if [ "$context_window_size" -gt 0 ] && [ "$tokens_used" -gt 0 ]; then
+    percentage=$((tokens_used * 100 / context_window_size))
+    token_percentage="${PURPLE}(${percentage}%)${GRAY}"
+fi
+
 # Format the output
 formatted_session_cost=$(format_cost "$session_cost")
 formatted_tokens=$(format_tokens "$session_tokens")
+formatted_tokens_used=$(format_tokens "$tokens_used")
+formatted_context_window=$(format_tokens "$context_window_size")
 
 # Build the status line with colors (light gray as default)
-status_line="${BLUE}$dir_name${GRAY} (${YELLOW}$branch${GRAY}) | ${LIGHT_GRAY}🤖 ${GREEN}$model_name${GRAY} / ${LIGHT_GRAY}"
+status_line="${BLUE}$dir_name${GRAY} (${YELLOW}$branch${GRAY}) | ${LIGHT_GRAY}🤖 ${GREEN}$model_name${GRAY} /${LIGHT_GRAY}"
 
 if [ "$remaining_time" != "N/A" ]; then
     status_line="$status_line 🕓 $remaining_time"
 fi
 
-status_line="$status_line${GRAY} | ${LIGHT_GRAY}🧩 ${formatted_tokens}${GRAY} tokens${RESET}"
+if [ "$context_window_size" -gt 0 ]; then
+    status_line="$status_line${GRAY} | ${LIGHT_GRAY}🧩 ${formatted_tokens_used}${GRAY}/${formatted_context_window} ${token_percentage}${RESET}"
+else
+    status_line="$status_line${GRAY} | ${LIGHT_GRAY}🧩 ${formatted_tokens}${GRAY}${RESET}"
+fi
 
 printf "%b\n" "$status_line"
